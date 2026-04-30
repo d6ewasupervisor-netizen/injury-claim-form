@@ -1,5 +1,5 @@
 /** API origin (no trailing slash). Set to your Railway URL for production. See README. */
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'https://injury-claim-form-api-production.up.railway.app';
 
 const form = document.getElementById('claim-form');
 const formRoot = document.getElementById('form-root');
