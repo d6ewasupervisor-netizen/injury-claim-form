@@ -1,22 +1,22 @@
-# Injury claim intake form
+# Injury claim intake API
 
-Monorepo: static **GitHub Pages** frontend (`web/`) and **Railway** **Node.js** API (`api/`) that emails submissions via [Resend](https://resend.com).
+Node.js API (`api/`) deployed on **Railway** that receives injury-report submissions from the three claim forms hosted in the [`the-dump-bin`](https://github.com/d6ewasupervisor-netizen/the-dump-bin) repo (under `claims/self/`, `claims/witness/`, `claims/investigation/`) and emails them via [Resend](https://resend.com).
+
+The frontend lives in the `the-dump-bin` repo and is served from `https://the-dump-bin.com/claims/...`. This repo no longer ships any frontend code; the previously-served `claims.the-dump-bin.com` subdomain (formerly backed by a `docs/` folder via GitHub Pages) was retired during the consolidation.
 
 - **From:** `claims@retail-odyssey.com`
-- **To:** `tyson.gauthier@retailodyssey.com` (operations inbox; **Reply-To** is the reporter’s email)
-- **Auth:** None in-app. Use **Cloudflare Access (OTP)** on the hostname that serves the form.
+- **To:** `tyson.gauthier@retailodyssey.com` (operations inbox; reporter is **CC**'d, **Reply-To** is the reporter's email)
+- **Auth:** None in-app. **Cloudflare Access (OTP)** gates the form pages on `the-dump-bin.com/claims/*`.
 
 ## Repository layout
 
 ```
 injury-claim-form/
-  web/
-    index.html
-    app.js
   api/
     server.js
     package.json
     .env.example
+  FIELD-MAP.md
   README.md
   .gitignore
 ```
@@ -26,9 +26,7 @@ injury-claim-form/
 - Node.js 18+
 - Resend API key and verified sending domain for `claims@retail-odyssey.com`
 
-## Local development
-
-### API (`api/`)
+## Local development (API)
 
 1. `cd api`
 2. Copy `.env.example` to `.env` and set:
@@ -45,37 +43,23 @@ Endpoints:
 
 `POST /api/claims` is rate-limited (60 requests per 15 minutes per IP).
 
-### Web (`web/`)
+To exercise the API end-to-end locally, run a local copy of the `the-dump-bin/claims/` pages and set `API_BASE` in `the-dump-bin/claims/app.js` to your local API URL. Add the exact browser origin you use to `ALLOWED_ORIGINS` in the API `.env`.
 
-1. At the **top** of [`web/app.js`](web/app.js), set **`API_BASE`** to your API base URL with **no trailing slash** (e.g. `http://localhost:3000` locally, or your Railway URL in production).
-2. Serve the folder over HTTP (avoid `file://` for CORS). Example:
+## Railway (production)
 
-   ```bash
-   npx --yes serve web -p 5173
-   ```
-
-3. Add the exact origin you use in the browser (e.g. `http://localhost:5173`) to `ALLOWED_ORIGINS` in the API `.env`.
-
-## Railway (API)
-
-1. Create a Railway service from this repo with **root directory** `api`.
+1. Service root directory: `api`.
 2. **Install:** `npm install`
 3. **Start:** `npm start` (`node server.js`)
 4. **Variables:**
    - `RESEND_API_KEY`
-   - `ALLOWED_ORIGINS` — e.g. `https://YOUR_USER.github.io,https://forms.yourdomain.com`
+   - `ALLOWED_ORIGINS` — current production value: `https://the-dump-bin.com,https://www.the-dump-bin.com`
    - `PORT` is set by Railway automatically.
 
-After deploy, set **`API_BASE`** in `web/app.js` to the public Railway **https://** URL, commit, and redeploy GitHub Pages.
-
-## GitHub Pages (frontend)
-
-- **Settings → Pages:** publish from branch and set the source folder to **`/web`**, or use a workflow that uploads the `web/` artifact.
-- Add your live site origin to Railway’s **`ALLOWED_ORIGINS`**.
+The frontend's `API_BASE` (in `the-dump-bin/claims/app.js`) points at this service's public Railway URL.
 
 ## Cloudflare Access (OTP)
 
-Authentication is **not** implemented in this app. In **Cloudflare Zero Trust → Access**, create an **Application** for the hostname (or path) where the form is hosted and use a **One-time PIN** / email policy. No code changes are required.
+Authentication is **not** implemented in this app. The form pages on `the-dump-bin.com/claims/*` are gated by a **Cloudflare Zero Trust → Access** Application using a **One-time PIN** / email policy. No code changes are required here.
 
 ## Environment variables (`api/.env.example`)
 

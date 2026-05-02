@@ -1,136 +1,317 @@
-# Injury Reporting — Field Map (Specification)
+# Injury Reporting — Field Map (As Built)
 
-This document describes the field structure for a three-type injury reporting tool. Specification only; no implementation.
+This document describes the current three-form injury reporting tool as implemented in `the-dump-bin/claims/` and enforced by the API in `injury-claim-form/api/server.js`.
+
+Source of truth used for this map:
+
+- `the-dump-bin/claims/self/index.html`
+- `the-dump-bin/claims/witness/index.html`
+- `the-dump-bin/claims/investigation/index.html`
+- `the-dump-bin/claims/app.js`
+- `injury-claim-form/api/server.js`
 
 ---
 
 ## Shared dropdown options
 
-Apply these options wherever the corresponding field appears across all three form types.
+Apply these options wherever the corresponding field appears across the forms.
 
 | Option set | Values |
 |------------|--------|
 | **Retailer** | Kroger, Fred Meyer, Walmart, QFC |
 | **Project** | Kompass ISE, Assembly, Remodel, Display Compliance, Central Pet |
-| **Body part affected** (multi-select) | Head, Eye, Neck, Shoulder, Upper back, Lower back, Chest, Abdomen, Arm, Elbow, Wrist, Hand, Finger, Hip, Leg, Knee, Ankle, Foot, Toe, Other |
+| **Body part affected** | Head, Eye, Neck, Shoulder, Upper back, Lower back, Chest, Abdomen, Arm, Elbow, Wrist, Hand, Finger, Hip, Leg, Knee, Ankle, Foot, Toe, Other |
 | **Side affected** | Left, Right, Both, Not applicable |
 | **Mechanism** | Specific incident (single event), Gradual onset (developed over time / repetitive), Unsure |
 
 ---
 
-## Confidentiality notice (Type 2 and Type 3 only)
+## Confidentiality notice
 
-Display at the **top** of the Type 2 and Type 3 forms:
+Displayed at the top of the Witness / Statement and Manager Investigation forms:
 
 > Information submitted may be shared with the injured worker, their representative, claims administrators, and the Washington State Department of Labor & Industries. Please be accurate and factual.
 
 ---
 
-## Type 1 — Self-Claim (I was injured)
+## Type 1 — Self-Report Injury
 
-| Field label | Field type | Required | Notes |
-|-------------|------------|----------|-------|
-| Reporter name | text | yes | Injured worker completing the claim. |
-| Reporter email | email | yes | Standard email validation. |
-| Reporter phone | tel | yes | Format/validation per product standards. |
-| Retailer | select | yes | Shared retailer options. |
-| Store / warehouse number | text | yes | Free text or masked format per product standards. |
-| Store address | text | yes | Street-level location of the facility. |
-| Project | select | yes | Shared project options. |
-| Mechanism | select | yes | Shared mechanism options. |
-| Date of injury | date | yes | Not in the future unless product allows amended reporting; clarify in implementation. |
-| Time of injury | time | yes | |
-| Body part(s) affected | multi-select | yes | Shared body-part list; at least one selection typically expected. |
-| Side affected | select | yes | Shared side options. |
-| Description of what happened | textarea | yes | Factual narrative of the incident or onset. |
-| Witnesses | repeater | no | Zero or more entries; each witness: **name** (text), **phone or email if known** (tel or email / combined text field). |
-| Did you report it to a supervisor? | radio | yes | Values: Yes / No. |
-| Supervisor name | text | conditional | Required when supervisor report = Yes. |
-| Date reported to supervisor | date | conditional | Required when supervisor report = Yes. |
-| Time reported to supervisor | time | conditional | Required when supervisor report = Yes. |
-| Pre-existing conditions or prior injuries (affected body part(s)) | textarea | no | Free text; clarify affected area aligns with multi-select above. |
+Form metadata:
 
----
+- `<form id="claim-form" data-form-kind="self">`
+- Hidden input: `name="reportType"` with value `self`
 
-## Type 2 — Witness / Secondhand Report
-
-**Confidentiality notice:** show at top (see above).
-
-| Field label | Field type | Required | Notes |
-|-------------|------------|----------|-------|
-| Reporter name | text | yes | Person submitting the witness/secondhand form. |
-| Reporter email | email | yes | |
-| Reporter phone | tel | yes | |
-| Relationship to injured person | select | yes | Options: Direct witness, Told secondhand, Asked to provide a statement, Other. |
-| Injured associate's name | text | yes | |
-| Retailer | select | yes | Shared retailer options. |
-| Store / warehouse number | text | yes | |
-| Store address | text | yes | |
-| Project | select | yes | Shared project options. |
-| Mechanism | select | yes | Shared mechanism options. |
-| Date of injury | date | yes | |
-| Time of injury | time | no | Label as “if known.” |
-| Body part(s) affected | multi-select | no | Shared list; label as “if known.” |
-| Side affected | select | no | Shared options; label as “if known.” |
-| Description of what was witnessed or reported | textarea | yes | Narrative of what they saw or were told. |
-| Statement / additional information | textarea | conditional | Required when Relationship = **Asked to provide a statement**. Optional or hidden otherwise (product decision: show optional for Other). |
-| Did the injured person mention reporting it to anyone? | radio | no | Yes / No (or neutral “unknown” if added later). If Yes, capture **name**, **date**, **time** (all optional subfields unless product tightens rules). |
-| Name (person they mentioned reporting to) | text | no | Use when preceding question indicates reporting mentioned; clarify in UI. |
-| Date (of that report) | date | no | If known. |
-| Time (of that report) | time | no | If known. |
-| Pre-existing conditions relevant to affected body part(s) | textarea | no | Awareness-based; may be unknown. |
+| Field label | Field type | name attribute | Required | Notes |
+|-------------|------------|----------------|----------|-------|
+| Report type | hidden | `reportType` | yes | Sent as `self`. If absent, the backend treats the payload as `self` for backwards compatibility. |
+| Reporter name | text | `reporterName` | yes | Injured worker completing the claim. |
+| Reporter email | email | `reporterEmail` | yes | Backend validates email format. Used as `replyTo` and `cc`. |
+| Reporter phone | tel | `reporterPhone` | yes | Required by browser and backend. |
+| Retailer | select | `retailer` | yes | Shared Retailer options. |
+| Store / warehouse number | text | `storeNumber` | yes | Free text. |
+| Store address | text | `storeAddress` | yes | Street-level location. |
+| Project | select | `project` | yes | Shared Project options. |
+| Mechanism | select | `mechanism` | yes | Shared Mechanism options. |
+| Date of injury | date | `dateOfInjury` | yes | Required by browser and backend. |
+| Time of injury | time | `timeOfInjury` | yes | Required by browser and backend. |
+| Body part(s) affected | checkbox group | `bodyPart` | yes | Shared Body Part options. `claims/app.js` maps checked values to payload field `bodyPartsAffected`. Backend requires at least one valid value. |
+| Side affected | select | `sideAffected` | yes | Shared Side options. |
+| Description of what happened | textarea | `description` | yes | Factual narrative. |
+| Witness name | repeater text | `witnessName` | no | Optional repeater. `claims/app.js` maps rows to `witnesses: [{ name, phoneOrEmail }]`. If a row is sent, backend requires `name`. |
+| Witness phone or email | repeater text | `witnessPhoneOrEmail` | no | Optional contact value for each witness row. |
+| Did you report it to a supervisor? | radio | `reportedToSupervisor` | yes | Values: Yes / No. |
+| Supervisor name | text | `supervisorName` | conditional | Shown and required when `reportedToSupervisor` is Yes. |
+| Date reported | date | `supervisorDateReported` | conditional | Shown and required when `reportedToSupervisor` is Yes. |
+| Time reported | time | `supervisorTimeReported` | conditional | Shown and required when `reportedToSupervisor` is Yes. |
+| Any pre-existing conditions or prior injuries to the affected area? | radio | `preExistingAny` | yes | Values: Yes / No. |
+| Please describe | textarea | `preExistingDetails` | conditional | Shown and required when `preExistingAny` is Yes. |
 
 ---
 
-## Type 3 — Management Investigation Intake
+## Type 2 — Witness / Statement
 
-**Confidentiality notice:** show at top (see above).
+Form metadata:
 
-**Body part / side:** Not included as structured fields on Type 3. Injury description—including affected region, if discussed—is captured only in the narrative responses to the investigation questions below (not via the shared body-part or side dropdowns).
+- `<form id="claim-form" data-form-kind="witness">`
+- Hidden input: `name="reportType"` with value `witness`
 
-| Field label | Field type | Required | Notes |
-|-------------|------------|----------|-------|
-| Reporter name (manager) | text | yes | Managing reporter. |
-| Reporter email | email | yes | |
-| Reporter phone | tel | no | Optional. Format/validation per product standards. |
-| Injured associate's name | text | yes | |
-| Retailer | select | yes | Shared retailer options. |
-| Store / warehouse number | text | yes | |
-| Store address | text | yes | |
-| Project | select | yes | Shared project options. |
-| Mechanism | select | yes | Shared mechanism options. |
-| Date of injury | date | yes | Incident/onset anchor for the investigation. |
-| When did you first learn about the incident? — date | date | yes | |
-| When did you first learn about the incident? — time | time | yes | Pair with date above. |
-| Were there any witnesses? | radio | yes | Yes / No. |
-| Witness entries | repeater | conditional | If Yes: one row per witness — **name** (text), **phone or email** (tel/email/combined text). |
-| What project was the associate working on when injured? | text or select | yes | Same vocabulary as Project dropdown is ideal; textarea acceptable if free-form note needed alongside confirm. Spec lists as standard investigation question — align options with shared **Project** where possible. |
-| Confirm retailer | select | yes | Prefill from above; acts as confirmation step. Same options as Retailer. |
-| Confirm store / warehouse number | text | yes | Prefill from store number field. |
-| Confirm store address | text | yes | Prefill from store address field. |
-| Inconsistencies between worker account and what you observed or were told | radio + textarea | conditional | Radio: Yes / No. If Yes, **describe** (textarea required). |
-| Current employment or disciplinary issues with the associate | radio + textarea | conditional | Yes / No. If Yes, **describe** (textarea required). |
-| Pre-existing injuries or conditions that might be relevant | radio + textarea | conditional | Yes / No. If Yes, **describe** (textarea required). |
-| Other contributing factors — accidents, falls, illnesses, etc. | radio + textarea | conditional | Yes / No. If Yes, **describe** (textarea required). |
-| Sports, activities, or hobbies that could be relevant | radio + textarea | conditional | Yes / No. If Yes, **describe** (textarea required). |
-| Heavy lifting or moving activities outside of work | radio + textarea | conditional | Yes / No. If Yes, **describe** (textarea required). |
-| OSHA recordability indicators | multi-select | yes | Options: Required medical treatment beyond first aid; Resulted in lost time; Resulted in restricted duty or job transfer; None of the above; Unknown. At least one selection. Mutually exclusive: selecting 'None of the above' clears all other selections; selecting any other option clears 'None of the above'. 'Unknown' is also mutually exclusive with the three positive options but can coexist with 'None' if the form decides to treat them as separate axes — recommend treating 'Unknown' as fully mutually exclusive with all others for simplicity. |
-| Additional follow-ups assigned | textarea | no | Example: notes on statements requested, confirmations, dates. |
+| Field label | Field type | name attribute | Required | Notes |
+|-------------|------------|----------------|----------|-------|
+| Report type | hidden | `reportType` | yes | Sent as `witness`. |
+| Reporter name | text | `reporterName` | yes | Person submitting the witness/secondhand report. |
+| Reporter email | email | `reporterEmail` | yes | Backend validates email format. Used as `replyTo` and `cc`. |
+| Reporter phone | tel | `reporterPhone` | yes | Required by browser and backend. |
+| Relationship to injured person | select | `relationshipToInjured` | yes | Options: Direct witness, Told secondhand, Asked to provide a statement, Other. |
+| Injured associate's name | text | `injuredAssociateName` | yes | Required by browser and backend. |
+| Retailer | select | `retailer` | yes | Shared Retailer options. |
+| Store / warehouse number | text | `storeNumber` | yes | Required by browser and backend. |
+| Store address | text | `storeAddress` | yes | Required by browser and backend. |
+| Project | select | `project` | yes | Shared Project options. |
+| Mechanism | select | `mechanism` | yes | Shared Mechanism options. |
+| Date of injury | date | `dateOfInjury` | yes | Required by browser and backend. |
+| Time of injury | time | `timeOfInjury` | no | Labeled "(if known)". |
+| Body part(s) affected | checkbox group | `bodyPart` | no | Shared Body Part options. `claims/app.js` maps checked values to payload field `bodyPartsAffected`. Backend validates values if present. |
+| Side affected | select | `sideAffected` | no | Shared Side options; labeled "(if known)". Backend validates value if present. |
+| Description of what was witnessed or reported | textarea | `description` | yes | Required by browser and backend. |
+| Statement / additional information | textarea | `statementAdditionalInfo` | conditional | Visible in all relationship states. Required only when `relationshipToInjured` is "Asked to provide a statement"; inline note appears in that state. |
+| Did the injured person mention reporting it to anyone? | radio | `mentionedReporting` | no | Values: Yes / No. If Yes, detail block is shown. Backend validates value if present. |
+| Name of person they mentioned reporting to | text | `mentionedReportName` | no | Shown only when `mentionedReporting` is Yes. Optional. |
+| Date of that report | date | `mentionedReportDate` | no | Shown only when `mentionedReporting` is Yes. Optional. |
+| Time of that report | time | `mentionedReportTime` | no | Shown only when `mentionedReporting` is Yes. Optional. |
+| Are you aware of any pre-existing conditions relevant to the affected body part(s)? | radio | `preExistingAware` | no | Values: Yes / No. Backend validates value if present. |
+| Please describe | textarea | `preExistingDetails` | conditional | Shown and required when `preExistingAware` is Yes. |
+
+---
+
+## Type 3 — Manager Investigation
+
+Form metadata:
+
+- `<form id="claim-form" data-form-kind="investigation">`
+- Hidden input: `name="reportType"` with value `investigation`
+- The form is rendered in the DOM but hidden until the manager gate authorizes the current user.
+
+| Field label | Field type | name attribute | Required | Notes |
+|-------------|------------|----------------|----------|-------|
+| Report type | hidden | `reportType` | yes | Sent as `investigation`. |
+| Reporter name (manager) | text | `reporterName` | yes | Manager completing the investigation intake. |
+| Reporter email | email | `reporterEmail` | yes | Backend validates email format. Used as `replyTo` and `cc`. |
+| Reporter phone | tel | `reporterPhone` | no | Optional. |
+| Injured associate's name | text | `injuredAssociateName` | yes | Required by browser and backend. |
+| Retailer | select | `retailer` | yes | Shared Retailer options. Used as the source for confirm retailer prefill. |
+| Store / warehouse number | text | `storeNumber` | yes | Used as the source for confirm store number prefill. |
+| Store address | text | `storeAddress` | yes | Used as the source for confirm store address prefill. |
+| Project | select | `project` | yes | Shared Project options. |
+| Mechanism | select | `mechanism` | yes | Shared Mechanism options. |
+| Date of injury | date | `dateOfInjury` | yes | Incident/onset anchor for the investigation. |
+| Q1. Date first learned about the incident | date | `firstLearnedDate` | yes | Paired with `firstLearnedTime`. |
+| Q1. Time first learned about the incident | time | `firstLearnedTime` | yes | Paired with `firstLearnedDate`. |
+| Q2. Were there any witnesses? | radio | `witnessesPresent` | yes | Values: Yes / No. If Yes, witness repeater is shown and one row is auto-added. |
+| Witness name | repeater text | `witnessName` | conditional | Required for each witness row when `witnessesPresent` is Yes. `claims/app.js` maps rows to `witnesses: [{ name, phoneOrEmail }]`. |
+| Witness phone or email | repeater text | `witnessPhoneOrEmail` | no | Optional contact value for each witness row. |
+| Q3. Project at time of injury | select | `projectAtInjury` | yes | Shared Project options. Backend validates against the same set as `project`. |
+| Q4. Confirm retailer | select | `confirmRetailer` | yes | Shared Retailer options. Prefilled from `retailer` until the manager edits the confirmation field. |
+| Q4. Confirm store / warehouse number | text | `confirmStoreNumber` | yes | Prefilled from `storeNumber` until the manager edits the confirmation field. |
+| Q4. Confirm store address | text | `confirmStoreAddress` | yes | Prefilled from `storeAddress` until the manager edits the confirmation field. |
+| Q5. Are there any inconsistencies between the worker's account and what you observed or were told? | radio | `inconsistenciesAny` | yes | Values: Yes / No. |
+| Q5. Describe | textarea | `inconsistenciesDescribe` | conditional | Shown and required when `inconsistenciesAny` is Yes. Disabled while hidden. |
+| Q6. Are there current employment or disciplinary issues with the associate? | radio | `employmentDisciplinaryAny` | yes | Values: Yes / No. |
+| Q6. Describe | textarea | `employmentDisciplinaryDescribe` | conditional | Shown and required when `employmentDisciplinaryAny` is Yes. Disabled while hidden. |
+| Q7. Pre-existing injuries or conditions that might be relevant? | radio | `preExistingRelevantAny` | yes | Values: Yes / No. |
+| Q7. Describe | textarea | `preExistingRelevantDescribe` | conditional | Shown and required when `preExistingRelevantAny` is Yes. Disabled while hidden. |
+| Q8. Other contributing factors — accidents, falls, illnesses, etc.? | radio | `contributingFactorsAny` | yes | Values: Yes / No. |
+| Q8. Describe | textarea | `contributingFactorsDescribe` | conditional | Shown and required when `contributingFactorsAny` is Yes. Disabled while hidden. |
+| Q9. Sports, activities, or hobbies that could be relevant? | radio | `sportsActivitiesAny` | yes | Values: Yes / No. |
+| Q9. Describe | textarea | `sportsActivitiesDescribe` | conditional | Shown and required when `sportsActivitiesAny` is Yes. Disabled while hidden. |
+| Q10. Heavy lifting or moving activities outside of work? | radio | `heavyLiftingAny` | yes | Values: Yes / No. |
+| Q10. Describe | textarea | `heavyLiftingDescribe` | conditional | Shown and required when `heavyLiftingAny` is Yes. Disabled while hidden. |
+| OSHA recordability indicators | checkbox group | `oshaIndicators` | yes | Options: Required medical treatment beyond first aid; Resulted in lost time; Resulted in restricted duty or job transfer; None of the above; Unknown. At least one selection required via custom validity. "None of the above" and "Unknown" are each fully mutually exclusive with every other option. Backend enforces the same exclusivity. |
+| Additional follow-ups assigned | textarea | `additionalFollowUps` | no | Helper text: "Use this space to log delegated follow-ups (e.g., 'Asked Evan for written statement on 3-18 reset')." |
 
 ---
 
 ## Shared across all three forms
 
-- **Incident context:** Retailer, store / warehouse number, store address, project, mechanism, date of injury.
-- **Harm detail (where collected):** Body part(s) affected and side affected use the same option sets when those fields appear on Type 1 (required) and Type 2 (optional / “if known”). Type 3 does **not** include those structured fields; injury detail appears only in narrative investigation responses.
-- **Reporting party identification:** Reporter name and reporter email appear on every form. Reporter phone: required on Type 1 and Type 2; optional on Type 3.
+- **Submission endpoint:** All forms submit JSON to `POST /api/claims`.
+- **Form metadata:** All forms use `id="claim-form"` and `data-form-kind` to route to the correct payload builder in `claims/app.js`.
+- **Report type:** All forms include hidden `reportType`; the backend branches on `self`, `witness`, or `investigation`.
+- **Reporter identity:** All forms collect `reporterName` and `reporterEmail`. `reporterEmail` is validated by the backend and used for `replyTo` and `cc`.
+- **Incident context:** Retailer, store / warehouse number, store address, project, mechanism, and date of injury are collected on all three forms.
+- **Shared option validation:** The backend validates retailer, project, mechanism, side affected, body parts, witness relationship, and OSHA values against fixed allowlists.
 
 ---
 
 ## Unique to each form
 
-- **Type 1:** First-person injured-worker flow; collects **time of injury**, supervisor reporting (conditional detail), structured **witness repeater**, and self-reported **pre-existing** information for affected areas.
+- **Self-Report Injury:** First-person injured-worker flow. Requires time of injury, body part(s), side affected, supervisor reporting answer, and pre-existing condition answer. Supports an optional witness repeater.
+- **Witness / Statement:** Third-party flow. Requires relationship to injured person and injured associate name. Time, body part(s), side, reporting-mentioned details, and pre-existing awareness are optional unless their conditional rules make detail text required.
+- **Manager Investigation:** Manager-only UX flow. No structured body-part or side fields. Adds learned-about timing, witness presence/repeater, project-at-injury confirmation, location confirmation prefills, six Yes/No + Describe investigation prompts, OSHA recordability indicators, and optional follow-up notes.
 
-- **Type 2:** Third-party / witness lens; **relationship to injured person** drives required **statement / additional information** when the reporter was asked to give a statement; **time**, **body parts**, and **side** are explicitly optional (“if known”); captures whether the injured person **mentioned** reporting to someone (with optional contact/timing).
+---
 
-- **Type 3:** Manager investigation intake after a claim exists; **optional reporter phone**; adds **learned-about** timing, structured **witness** block, duplicate **confirmation** fields for retailer/store/address, **inconsistency and HR/relevance** Yes/No+describe prompts, **OSHA recordability** multi-select, and **follow-up assignments** free text — with no structured body-part or side picker; narratives carry injury description.
+## Backend payload contract
+
+The frontend collects DOM fields and normalizes them into these JSON shapes in `claims/app.js`. The backend validators in `api/server.js` enforce the field names below.
+
+### Self report payload
+
+```json
+{
+  "reportType": "self",
+  "reporterName": "string",
+  "reporterEmail": "string email",
+  "reporterPhone": "string",
+  "retailer": "Kroger | Fred Meyer | Walmart | QFC",
+  "storeNumber": "string",
+  "storeAddress": "string",
+  "project": "Kompass ISE | Assembly | Remodel | Display Compliance | Central Pet",
+  "mechanism": "Specific incident (single event) | Gradual onset (developed over time / repetitive) | Unsure",
+  "dateOfInjury": "YYYY-MM-DD",
+  "timeOfInjury": "HH:MM",
+  "bodyPartsAffected": ["Head"],
+  "sideAffected": "Left | Right | Both | Not applicable",
+  "description": "string",
+  "witnesses": [
+    {
+      "name": "string",
+      "phoneOrEmail": "string"
+    }
+  ],
+  "reportedToSupervisor": "Yes | No",
+  "supervisorName": "string when reportedToSupervisor is Yes",
+  "supervisorDateReported": "YYYY-MM-DD when reportedToSupervisor is Yes",
+  "supervisorTimeReported": "HH:MM when reportedToSupervisor is Yes",
+  "preExistingAny": "Yes | No",
+  "preExistingDetails": "string when preExistingAny is Yes"
+}
+```
+
+### Witness / statement payload
+
+```json
+{
+  "reportType": "witness",
+  "reporterName": "string",
+  "reporterEmail": "string email",
+  "reporterPhone": "string",
+  "relationshipToInjured": "Direct witness | Told secondhand | Asked to provide a statement | Other",
+  "injuredAssociateName": "string",
+  "retailer": "Kroger | Fred Meyer | Walmart | QFC",
+  "storeNumber": "string",
+  "storeAddress": "string",
+  "project": "Kompass ISE | Assembly | Remodel | Display Compliance | Central Pet",
+  "mechanism": "Specific incident (single event) | Gradual onset (developed over time / repetitive) | Unsure",
+  "dateOfInjury": "YYYY-MM-DD",
+  "timeOfInjury": "HH:MM optional",
+  "bodyPartsAffected": ["Head"],
+  "sideAffected": "Left | Right | Both | Not applicable optional",
+  "description": "string",
+  "statementAdditionalInfo": "string required when relationshipToInjured is Asked to provide a statement",
+  "mentionedReporting": "Yes | No optional",
+  "mentionedReportName": "string optional",
+  "mentionedReportDate": "YYYY-MM-DD optional",
+  "mentionedReportTime": "HH:MM optional",
+  "preExistingAware": "Yes | No optional",
+  "preExistingDetails": "string when preExistingAware is Yes"
+}
+```
+
+### Manager investigation payload
+
+```json
+{
+  "reportType": "investigation",
+  "reporterName": "string",
+  "reporterEmail": "string email",
+  "reporterPhone": "string optional",
+  "injuredAssociateName": "string",
+  "retailer": "Kroger | Fred Meyer | Walmart | QFC",
+  "storeNumber": "string",
+  "storeAddress": "string",
+  "project": "Kompass ISE | Assembly | Remodel | Display Compliance | Central Pet",
+  "mechanism": "Specific incident (single event) | Gradual onset (developed over time / repetitive) | Unsure",
+  "dateOfInjury": "YYYY-MM-DD",
+  "firstLearnedDate": "YYYY-MM-DD",
+  "firstLearnedTime": "HH:MM",
+  "witnessesPresent": "Yes | No",
+  "witnesses": [
+    {
+      "name": "string required when witnessesPresent is Yes",
+      "phoneOrEmail": "string optional"
+    }
+  ],
+  "projectAtInjury": "Kompass ISE | Assembly | Remodel | Display Compliance | Central Pet",
+  "confirmRetailer": "Kroger | Fred Meyer | Walmart | QFC",
+  "confirmStoreNumber": "string",
+  "confirmStoreAddress": "string",
+  "inconsistenciesAny": "Yes | No",
+  "inconsistenciesDescribe": "string when inconsistenciesAny is Yes",
+  "employmentDisciplinaryAny": "Yes | No",
+  "employmentDisciplinaryDescribe": "string when employmentDisciplinaryAny is Yes",
+  "preExistingRelevantAny": "Yes | No",
+  "preExistingRelevantDescribe": "string when preExistingRelevantAny is Yes",
+  "contributingFactorsAny": "Yes | No",
+  "contributingFactorsDescribe": "string when contributingFactorsAny is Yes",
+  "sportsActivitiesAny": "Yes | No",
+  "sportsActivitiesDescribe": "string when sportsActivitiesAny is Yes",
+  "heavyLiftingAny": "Yes | No",
+  "heavyLiftingDescribe": "string when heavyLiftingAny is Yes",
+  "oshaIndicators": [
+    "Required medical treatment beyond first aid"
+  ],
+  "additionalFollowUps": "string optional"
+}
+```
+
+OSHA payload rule: `oshaIndicators` must contain at least one valid value. If it contains `None of the above` or `Unknown`, that value must be the only entry in the array.
+
+---
+
+## Manager gate
+
+The Manager Investigation form uses a soft access gate:
+
+- Cloudflare Access OTP is the first layer for the site/application.
+- The client-side gate fetches Cloudflare Access identity from `/cdn-cgi/access/get-identity`.
+- The email is checked against the allowlist in `the-dump-bin/claims/managers.js`.
+- This is defense-in-depth UX gating only, not a security boundary. Real authorization belongs at the API layer if/when needed.
+
+To add a manager:
+
+1. Edit `MANAGER_EMAILS` in `the-dump-bin/claims/managers.js`.
+2. Commit the change.
+3. Push/deploy the static site.
+
+---
+
+## Email behavior
+
+- All three forms POST to the same backend endpoint: `/api/claims`.
+- The backend branches on `reportType` and renders one of three email templates: self, witness, or investigation.
+- All emails are sent to `OPS_TO`.
+- `replyTo` is set to the submitter's `reporterEmail`.
+- `cc` is also set to the submitter's `reporterEmail`, guarded by backend email validation, so submitters receive a record of what they submitted.
+- Subjects are:
+  - Self: `Injury Self-Report — {reporterName} at {retailer} #{storeNumber}`
+  - Witness: `Witness/Statement Report — {injuredAssociateName} at {retailer} #{storeNumber} (reported by {reporterName})`
+  - Investigation: `Manager Investigation — {injuredAssociateName} at {retailer} #{storeNumber} (manager: {reporterName})`
