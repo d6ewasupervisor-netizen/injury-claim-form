@@ -62,6 +62,32 @@ function parseAllowedOrigins() {
     .filter(Boolean);
 }
 
+function parseManagerEmails() {
+  const raw = process.env.MANAGER_EMAILS || '';
+  return new Set(
+    raw
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email.length > 0)
+  );
+}
+
+function isAuthorizedManager(req) {
+  const allowlist = parseManagerEmails();
+  if (allowlist.size === 0) {
+    return { ok: false, reason: 'Manager allowlist is not configured on the server.' };
+  }
+  const headerEmail = req.get('Cf-Access-Authenticated-User-Email');
+  if (!headerEmail) {
+    return { ok: false, reason: 'Missing Cloudflare Access identity header.' };
+  }
+  const normalized = headerEmail.trim().toLowerCase();
+  if (!allowlist.has(normalized)) {
+    return { ok: false, reason: 'Email not authorized for investigation submissions.' };
+  }
+  return { ok: true, email: normalized };
+}
+
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
@@ -582,12 +608,13 @@ const corsOptions =
         },
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type'],
-        credentials: false,
+        credentials: true,
       }
     : {
         origin: true,
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type'],
+        credentials: true,
       };
 
 app.use(cors(corsOptions));
@@ -621,6 +648,15 @@ app.post('/api/claims', async (req, res) => {
 
   if (!REPORT_TYPES.has(reportType)) {
     return res.status(400).json({ error: 'Invalid reportType' });
+  }
+
+  if (reportType === 'investigation') {
+    const auth = isAuthorizedManager(req);
+    if (!auth.ok) {
+      console.warn(`[claims] investigation submission rejected: ${auth.reason}`);
+      return res.status(403).json({ error: 'Not authorized to submit an investigation report.' });
+    }
+    console.log(`[claims] investigation submission authorized for ${auth.email}`);
   }
 
   console.log(
