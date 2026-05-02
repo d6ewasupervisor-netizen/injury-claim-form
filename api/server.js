@@ -88,6 +88,23 @@ function isAuthorizedManager(req) {
   return { ok: true, email: normalized };
 }
 
+function parseAllowedHosts() {
+  const raw = process.env.ALLOWED_HOSTS || '';
+  const list = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.length === 0) return null;
+  return new Set(list);
+}
+
+function isAllowedHost(req) {
+  const allowed = parseAllowedHosts();
+  if (allowed === null) return true;
+  const host = (req.headers.host || '').toLowerCase().split(':')[0];
+  return allowed.has(host);
+}
+
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
@@ -618,6 +635,14 @@ const corsOptions =
       };
 
 app.use(cors(corsOptions));
+
+app.use((req, res, next) => {
+  if (!isAllowedHost(req)) {
+    console.warn(`[server] rejected request with disallowed host: ${req.headers.host || '(none)'}`);
+    return res.status(404).send('Not Found');
+  }
+  next();
+});
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,

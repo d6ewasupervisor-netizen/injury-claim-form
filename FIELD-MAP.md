@@ -152,7 +152,7 @@ Form metadata:
 
 ## Shared across all three forms
 
-- **Submission endpoint:** All forms submit JSON to `POST /api/claims`.
+- **Submission endpoint:** All forms submit JSON to `POST https://api.the-dump-bin.com/api/claims`. Requests route through Cloudflare Access, which injects the `Cf-Access-Authenticated-User-Email` header before forwarding to Railway.
 - **Form metadata:** All forms use `id="claim-form"` and `data-form-kind` to route to the correct payload builder in `claims/app.js`.
 - **Report type:** All forms include hidden `reportType`; the backend branches on `self`, `witness`, or `investigation`.
 - **Reporter identity:** All forms collect `reporterName` and `reporterEmail`. `reporterEmail` is validated by the backend and used for `replyTo` and `cc`.
@@ -294,7 +294,7 @@ The Manager Investigation form uses a soft access gate:
 - Cloudflare Access OTP is the first layer for the site/application.
 - The client-side gate fetches Cloudflare Access identity from `/cdn-cgi/access/get-identity`.
 - The email is checked against the allowlist in `the-dump-bin/claims/managers.js`.
-- This is defense-in-depth UX gating only, not a security boundary. Real authorization belongs at the API layer if/when needed.
+- This is defense-in-depth UX gating only, not a security boundary. Investigation submissions are enforced server-side; see **Manager investigation hard auth** below.
 
 To add a manager:
 
@@ -304,9 +304,34 @@ To add a manager:
 
 ---
 
+## Manager investigation hard auth
+
+- The API enforces manager identity for `reportType: investigation` using `parseManagerEmails` and `isAuthorizedManager` in `injury-claim-form/api/server.js`.
+- `MANAGER_EMAILS` is set on Railway as a comma-separated list of emails (stored lowercase; matching is case-insensitive against the normalized `Cf-Access-Authenticated-User-Email` value).
+- The client-side gate in `claims/managers.js` is UX-only; the server-side check is the authority for accepting or rejecting investigation payloads.
+- All forms must reach the API via `api.the-dump-bin.com` so Cloudflare Access can inject `Cf-Access-Authenticated-User-Email` before the request hits Express.
+
+---
+
+## CORS and origin lockdown
+
+- `ALLOWED_ORIGINS` on Railway restricts which browser origins may call the API (currently `https://the-dump-bin.com`).
+- The Express app enables CORS credentials so the Cloudflare Access session cookie can be sent on cross-origin requests to the API.
+- The Cloudflare Access application has its own CORS settings (allowed origin, credentials, methods `GET`/`POST`, header `Content-Type`, `max-age` 600) so `OPTIONS` preflights are answered at the edge without forwarding to Express.
+
+---
+
+## Host allowlist
+
+- `ALLOWED_HOSTS` on Railway lists acceptable `Host` header values (currently `api.the-dump-bin.com`).
+- Middleware in `injury-claim-form/api/server.js` returns `404 Not Found` for any request whose `Host` is not allowlisted, which blocks direct use of the default `*.up.railway.app` hostname.
+- If `ALLOWED_HOSTS` is empty or unset, the check is disabled (useful for local development).
+
+---
+
 ## Email behavior
 
-- All three forms POST to the same backend endpoint: `/api/claims`.
+- All three forms POST to the same backend endpoint: `https://api.the-dump-bin.com/api/claims` (via Cloudflare Access; see **Shared across all three forms**).
 - The backend branches on `reportType` and renders one of three email templates: self, witness, or investigation.
 - All emails are sent to `OPS_TO`.
 - `replyTo` is set to the submitter's `reporterEmail`.
