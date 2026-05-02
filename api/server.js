@@ -635,6 +635,7 @@ app.post('/api/claims', async (req, res) => {
   const { html, text } = emailTemplates[reportType](payload);
   const subj = subjectLine(reportType, payload);
   const reporterEmail = payload.reporterEmail.trim();
+  const ccRecipients = isEmail(reporterEmail) ? [reporterEmail] : [];
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   try {
@@ -642,6 +643,8 @@ app.post('/api/claims', async (req, res) => {
       from: FROM,
       to: OPS_TO,
       replyTo: reporterEmail,
+      // CC the submitter so they have a record of what they submitted.
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
       subject: subj,
       html,
       text,
