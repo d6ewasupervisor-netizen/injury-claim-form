@@ -7,39 +7,52 @@ const PORT = process.env.PORT || 3000;
 const OPS_TO = 'tyson.gauthier@retailodyssey.com';
 const FROM = 'Retail Odyssey Claims <claims@retail-odyssey.com>';
 
-const ynUnknown = new Set(['Yes', 'No', 'Unknown']);
-const witnessSet = new Set(['Yes', 'No', 'Unknown']);
-
-const REPORTER_ROLES = new Set([
-  'Field Operations Supervisor',
-  'District Manager',
-  'Lead',
+const REPORT_TYPES = new Set(['self', 'witness', 'investigation']);
+const YES_NO = new Set(['Yes', 'No']);
+const RETAILERS = new Set(['Kroger', 'Fred Meyer', 'Walmart', 'QFC']);
+const PROJECTS = new Set(['Kompass ISE', 'Assembly', 'Remodel', 'Display Compliance', 'Central Pet']);
+const MECHANISMS = new Set([
+  'Specific incident (single event)',
+  'Gradual onset (developed over time / repetitive)',
+  'Unsure',
+]);
+const BODY_PARTS = new Set([
+  'Head',
+  'Eye',
+  'Neck',
+  'Shoulder',
+  'Upper back',
+  'Lower back',
+  'Chest',
+  'Abdomen',
+  'Arm',
+  'Elbow',
+  'Wrist',
+  'Hand',
+  'Finger',
+  'Hip',
+  'Leg',
+  'Knee',
+  'Ankle',
+  'Foot',
+  'Toe',
   'Other',
 ]);
-const HOW_LEARNED = new Set([
-  'Phone call',
-  'Text message',
-  'In person',
-  'Email',
+const SIDES = new Set(['Left', 'Right', 'Both', 'Not applicable']);
+const WITNESS_RELATIONSHIPS = new Set([
+  'Direct witness',
+  'Told secondhand',
+  'Asked to provide a statement',
   'Other',
 ]);
-const PROJECT_TYPES = new Set([
-  'Reset',
-  'Remodel',
-  'Audit',
-  'Vitamins',
-  'Cosmetics',
-  'New store set',
-  'Other',
+const OSHA_INDICATORS = new Set([
+  'Required medical treatment beyond first aid',
+  'Resulted in lost time',
+  'Resulted in restricted duty or job transfer',
+  'None of the above',
+  'Unknown',
 ]);
-const RETAILERS = new Set([
-  'Fred Meyer',
-  'Kroger',
-  'QFC',
-  'Albertsons',
-  'Safeway',
-  'Other',
-]);
+const OSHA_EXCLUSIVE = new Set(['None of the above', 'Unknown']);
 
 function parseAllowedOrigins() {
   const raw = process.env.ALLOWED_ORIGINS || '';
@@ -53,6 +66,237 @@ function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+function isEmail(v) {
+  return isNonEmptyString(v) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+}
+
+function asArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v === undefined || v === null || v === '') return [];
+  return [v];
+}
+
+function uniqueIssues(issues) {
+  return [...new Set(issues)];
+}
+
+function addRequired(issues, payload, fields) {
+  for (const field of fields) {
+    if (!isNonEmptyString(payload[field])) issues.push(field);
+  }
+}
+
+function validateSet(issues, field, value, allowed) {
+  if (isNonEmptyString(value) && !allowed.has(value.trim())) {
+    issues.push(field);
+  }
+}
+
+function validateYesNo(issues, payload, field) {
+  if (!isNonEmptyString(payload[field]) || !YES_NO.has(payload[field])) {
+    issues.push(field);
+  }
+}
+
+function validateEmailField(issues, payload, field) {
+  if (!isEmail(payload[field])) {
+    issues.push(field);
+  }
+}
+
+function validateWitnessArray(issues, payload, field, { required = false } = {}) {
+  const witnesses = payload[field];
+  if (witnesses === undefined || witnesses === null) {
+    if (required) issues.push(field);
+    return;
+  }
+
+  if (!Array.isArray(witnesses)) {
+    issues.push(field);
+    return;
+  }
+
+  if (required && witnesses.length === 0) {
+    issues.push(field);
+  }
+
+  witnesses.forEach((witness, index) => {
+    if (!witness || typeof witness !== 'object') {
+      issues.push(`${field}[${index}]`);
+      return;
+    }
+    if (!isNonEmptyString(witness.name)) {
+      issues.push(`${field}[${index}].name`);
+    }
+  });
+}
+
+function validateBodyParts(issues, payload, { required }) {
+  const bodyParts = asArray(payload.bodyPartsAffected);
+  if (required && bodyParts.length === 0) {
+    issues.push('bodyPartsAffected');
+  }
+  for (const bodyPart of bodyParts) {
+    if (!BODY_PARTS.has(bodyPart)) {
+      issues.push('bodyPartsAffected');
+      break;
+    }
+  }
+}
+
+function validateSelfClaim(payload) {
+  const issues = [];
+
+  addRequired(issues, payload, [
+    'reporterName',
+    'reporterEmail',
+    'reporterPhone',
+    'retailer',
+    'storeNumber',
+    'storeAddress',
+    'project',
+    'mechanism',
+    'dateOfInjury',
+    'timeOfInjury',
+    'sideAffected',
+    'description',
+  ]);
+  validateEmailField(issues, payload, 'reporterEmail');
+  validateSet(issues, 'retailer', payload.retailer, RETAILERS);
+  validateSet(issues, 'project', payload.project, PROJECTS);
+  validateSet(issues, 'mechanism', payload.mechanism, MECHANISMS);
+  validateSet(issues, 'sideAffected', payload.sideAffected, SIDES);
+  validateBodyParts(issues, payload, { required: true });
+
+  if (payload.witnesses !== undefined) {
+    validateWitnessArray(issues, payload, 'witnesses');
+  }
+
+  validateYesNo(issues, payload, 'reportedToSupervisor');
+  if (payload.reportedToSupervisor === 'Yes') {
+    addRequired(issues, payload, [
+      'supervisorName',
+      'supervisorDateReported',
+      'supervisorTimeReported',
+    ]);
+  }
+
+  validateYesNo(issues, payload, 'preExistingAny');
+  if (payload.preExistingAny === 'Yes') {
+    addRequired(issues, payload, ['preExistingDetails']);
+  }
+
+  return uniqueIssues(issues);
+}
+
+function validateWitnessReport(payload) {
+  const issues = [];
+
+  addRequired(issues, payload, [
+    'reporterName',
+    'reporterEmail',
+    'reporterPhone',
+    'relationshipToInjured',
+    'injuredAssociateName',
+    'retailer',
+    'storeNumber',
+    'storeAddress',
+    'project',
+    'mechanism',
+    'dateOfInjury',
+    'description',
+  ]);
+  validateEmailField(issues, payload, 'reporterEmail');
+  validateSet(issues, 'relationshipToInjured', payload.relationshipToInjured, WITNESS_RELATIONSHIPS);
+  validateSet(issues, 'retailer', payload.retailer, RETAILERS);
+  validateSet(issues, 'project', payload.project, PROJECTS);
+  validateSet(issues, 'mechanism', payload.mechanism, MECHANISMS);
+  validateSet(issues, 'sideAffected', payload.sideAffected, SIDES);
+  validateBodyParts(issues, payload, { required: false });
+
+  if (payload.relationshipToInjured === 'Asked to provide a statement') {
+    addRequired(issues, payload, ['statementAdditionalInfo']);
+  }
+
+  if (isNonEmptyString(payload.mentionedReporting) && !YES_NO.has(payload.mentionedReporting)) {
+    issues.push('mentionedReporting');
+  }
+  if (isNonEmptyString(payload.preExistingAware) && !YES_NO.has(payload.preExistingAware)) {
+    issues.push('preExistingAware');
+  }
+  if (payload.preExistingAware === 'Yes') {
+    addRequired(issues, payload, ['preExistingDetails']);
+  }
+
+  return uniqueIssues(issues);
+}
+
+function validateInvestigationReport(payload) {
+  const issues = [];
+
+  addRequired(issues, payload, [
+    'reporterName',
+    'reporterEmail',
+    'injuredAssociateName',
+    'retailer',
+    'storeNumber',
+    'storeAddress',
+    'project',
+    'mechanism',
+    'dateOfInjury',
+    'firstLearnedDate',
+    'firstLearnedTime',
+    'witnessesPresent',
+    'projectAtInjury',
+    'confirmRetailer',
+    'confirmStoreNumber',
+    'confirmStoreAddress',
+  ]);
+  validateEmailField(issues, payload, 'reporterEmail');
+  validateSet(issues, 'retailer', payload.retailer, RETAILERS);
+  validateSet(issues, 'confirmRetailer', payload.confirmRetailer, RETAILERS);
+  validateSet(issues, 'project', payload.project, PROJECTS);
+  validateSet(issues, 'projectAtInjury', payload.projectAtInjury, PROJECTS);
+  validateSet(issues, 'mechanism', payload.mechanism, MECHANISMS);
+  validateYesNo(issues, payload, 'witnessesPresent');
+
+  if (payload.witnessesPresent === 'Yes') {
+    validateWitnessArray(issues, payload, 'witnesses', { required: true });
+  }
+
+  const yesDescribePairs = [
+    ['inconsistenciesAny', 'inconsistenciesDescribe'],
+    ['employmentDisciplinaryAny', 'employmentDisciplinaryDescribe'],
+    ['preExistingRelevantAny', 'preExistingRelevantDescribe'],
+    ['contributingFactorsAny', 'contributingFactorsDescribe'],
+    ['sportsActivitiesAny', 'sportsActivitiesDescribe'],
+    ['heavyLiftingAny', 'heavyLiftingDescribe'],
+  ];
+
+  for (const [radioField, describeField] of yesDescribePairs) {
+    validateYesNo(issues, payload, radioField);
+    if (payload[radioField] === 'Yes') {
+      addRequired(issues, payload, [describeField]);
+    }
+  }
+
+  const osha = asArray(payload.oshaIndicators);
+  if (osha.length === 0) {
+    issues.push('oshaIndicators');
+  }
+  for (const indicator of osha) {
+    if (!OSHA_INDICATORS.has(indicator)) {
+      issues.push('oshaIndicators');
+      break;
+    }
+  }
+  if (osha.some((indicator) => OSHA_EXCLUSIVE.has(indicator)) && osha.length > 1) {
+    issues.push('oshaIndicators');
+  }
+
+  return uniqueIssues(issues);
+}
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
@@ -62,232 +306,268 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+function displayValue(value) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '—';
+    return value.map(formatListItem).join('\n');
+  }
+  return value === undefined || value === null || value === '' ? '—' : String(value);
+}
+
+function formatListItem(value) {
+  if (!value || typeof value !== 'object') return String(value);
+  const name = value.name || '—';
+  const contact = value.phoneOrEmail || '—';
+  return `${name} (${contact})`;
+}
+
 function row(label, value) {
-  const v = value === undefined || value === null || value === '' ? '—' : String(value);
+  const v = displayValue(value);
   return `<tr><td style="padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;font-weight:600;width:42%;background:#f8fafc;">${escapeHtml(label)}</td><td style="padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;">${escapeHtml(v).replace(/\n/g, '<br/>')}</td></tr>`;
 }
 
-function buildOpsHtml(body) {
-  const {
-    reporterName,
-    reporterRole,
-    reporterEmail,
-    reporterPhone,
-    associateName,
-    incidentDate,
-    firstLearnedAt,
-    howLearned,
-    witnessesPresent,
-    witnessDetails,
-    projectType,
-    projectOther,
-    retailer,
-    storeNumber,
-    storeAddress,
-    validityQuestioned,
-    validityExplain,
-    employmentIssues,
-    employmentExplain,
-    preExisting,
-    preExistingExplain,
-    otherFactors,
-    otherFactorsExplain,
-    sportsHobbies,
-    sportsExplain,
-    heavyLiftingOutsideWork,
-    heavyLiftingExplain,
-  } = body;
-
-  const validityRows = [
-    ['Any reason to question the validity of the injury claim?', validityQuestioned, validityExplain],
-    ['Any current employment or disciplinary issues with the associate?', employmentIssues, employmentExplain],
-    ['Aware of any pre-existing injuries or conditions that might be relevant?', preExisting, preExistingExplain],
-    ['Aware of any other factors (car accidents, falls, illnesses) that may have contributed?', otherFactors, otherFactorsExplain],
-    ['Associate involved in any sports, activities, or hobbies that could be relevant?', sportsHobbies, sportsExplain],
-    ['Aware of heavy lifting or moving activities outside of work?', heavyLiftingOutsideWork, heavyLiftingExplain],
-  ];
-
-  let validityTable = `<table style="border-collapse:collapse;width:100%;max-width:720px;font-family:system-ui,Segoe UI,sans-serif;font-size:14px;color:#0f172a;"><tbody>`;
-  for (const [q, ans, expl] of validityRows) {
-    const explainBlock =
-      ans === 'Yes' && isNonEmptyString(expl)
-        ? `<div style="margin-top:6px;"><strong>Please explain:</strong><br/>${escapeHtml(expl).replace(/\n/g, '<br/>')}</div>`
-        : '';
-    validityTable += `<tr><td colspan="2" style="padding:10px 12px;border:1px solid #cbd5e1;background:#f1f5f9;"><div style="font-weight:600;margin-bottom:4px;">${escapeHtml(q)}</div><div><strong>Answer:</strong> ${escapeHtml(ans)}</div>${explainBlock}</td></tr>`;
-  }
-  validityTable += `</tbody></table>`;
-
-  const reporterTable = `<table style="border-collapse:collapse;width:100%;max-width:720px;font-family:system-ui,Segoe UI,sans-serif;font-size:14px;color:#0f172a;"><tbody>
-${row('Reporter name', reporterName)}
-${row('Reporter role/title', reporterRole)}
-${row('Reporter email', reporterEmail)}
-${row('Reporter phone', reporterPhone || '—')}
+function sectionHtml(title, rows) {
+  return `<h2 style="font-size:18px;margin:24px 0 12px;">${escapeHtml(title)}</h2>
+<table style="border-collapse:collapse;width:100%;max-width:760px;font-family:system-ui,Segoe UI,sans-serif;font-size:14px;color:#0f172a;"><tbody>
+${rows.map(([label, value]) => row(label, value)).join('\n')}
 </tbody></table>`;
+}
 
-  const incidentTable = `<table style="border-collapse:collapse;width:100%;max-width:720px;font-family:system-ui,Segoe UI,sans-serif;font-size:14px;color:#0f172a;"><tbody>
-${row("Associate's full name", associateName)}
-${row('Date of incident', incidentDate)}
-${row('Date/time first learned of incident', firstLearnedAt)}
-${row('How you learned of the incident', howLearned)}
-${row('Witnesses present?', witnessesPresent)}
-${row('Witness names and contact info', witnessesPresent === 'Yes' ? witnessDetails : 'N/A')}
-${row('Project the associate was working on', projectType)}
-${row('Project (other detail)', projectType === 'Other' ? projectOther : 'N/A')}
-${row('Retailer', retailer)}
-${row('Store/warehouse number', storeNumber)}
-${row('Store address', storeAddress)}
-</tbody></table>`;
-
+function buildHtmlEmail(title, sections) {
   return `<div style="font-family:system-ui,Segoe UI,sans-serif;color:#0f172a;line-height:1.5;">
-<h2 style="font-size:18px;margin:0 0 12px;">Reporter</h2>
-${reporterTable}
-<h2 style="font-size:18px;margin:24px 0 12px;">Incident</h2>
-${incidentTable}
-<h2 style="font-size:18px;margin:24px 0 12px;">Validity &amp; context</h2>
-${validityTable}
+<h1 style="font-size:20px;margin:0 0 16px;">${escapeHtml(title)}</h1>
+${sections.map((section) => sectionHtml(section.title, section.rows)).join('\n')}
 </div>`;
 }
 
-function buildOpsText(body) {
-  const lines = [];
-  const add = (label, val) => {
-    const v = val === undefined || val === null || val === '' ? '—' : String(val);
-    lines.push(`${label}: ${v}`);
-  };
-
-  lines.push('REPORTER');
-  add('Reporter name', body.reporterName);
-  add('Reporter role/title', body.reporterRole);
-  add('Reporter email', body.reporterEmail);
-  add('Reporter phone', body.reporterPhone);
-
-  lines.push('');
-  lines.push('INCIDENT');
-  add("Associate's full name", body.associateName);
-  add('Date of incident', body.incidentDate);
-  add('Date/time first learned of incident', body.firstLearnedAt);
-  add('How you learned of the incident', body.howLearned);
-  add('Witnesses present?', body.witnessesPresent);
-  add(
-    'Witness names and contact info',
-    body.witnessesPresent === 'Yes' ? body.witnessDetails : 'N/A'
-  );
-  add('Project', body.projectType);
-  add('Project (other)', body.projectType === 'Other' ? body.projectOther : 'N/A');
-  add('Retailer', body.retailer);
-  add('Store/warehouse number', body.storeNumber);
-  add('Store address', body.storeAddress);
-
-  const validityRows = [
-    ['Any reason to question the validity of the injury claim?', body.validityQuestioned, body.validityExplain],
-    ['Any current employment or disciplinary issues with the associate?', body.employmentIssues, body.employmentExplain],
-    ['Aware of any pre-existing injuries or conditions that might be relevant?', body.preExisting, body.preExistingExplain],
-    ['Aware of any other factors (car accidents, falls, illnesses) that may have contributed?', body.otherFactors, body.otherFactorsExplain],
-    ['Associate involved in any sports, activities, or hobbies that could be relevant?', body.sportsHobbies, body.sportsExplain],
-    ['Aware of heavy lifting or moving activities outside of work?', body.heavyLiftingOutsideWork, body.heavyLiftingExplain],
-  ];
-
-  lines.push('');
-  lines.push('VALIDITY & CONTEXT');
-  for (const [q, ans, expl] of validityRows) {
-    lines.push(q);
-    lines.push(`  Answer: ${ans}`);
-    if (ans === 'Yes' && isNonEmptyString(expl)) {
-      lines.push(`  Please explain: ${expl}`);
+function buildTextEmail(title, sections) {
+  const lines = [title];
+  for (const section of sections) {
+    lines.push('', section.title.toUpperCase());
+    for (const [label, value] of section.rows) {
+      lines.push(`${label}: ${displayValue(value)}`);
     }
-    lines.push('');
   }
-
   return lines.join('\n');
 }
 
-function collectMissing(body) {
-  const missing = [];
-
-  const req = [
-    ['reporterName', body.reporterName],
-    ['reporterRole', body.reporterRole],
-    ['reporterEmail', body.reporterEmail],
-    ['associateName', body.associateName],
-    ['incidentDate', body.incidentDate],
-    ['firstLearnedAt', body.firstLearnedAt],
-    ['howLearned', body.howLearned],
-    ['witnessesPresent', body.witnessesPresent],
-    ['projectType', body.projectType],
-    ['retailer', body.retailer],
-    ['storeNumber', body.storeNumber],
-    ['storeAddress', body.storeAddress],
-    ['validityQuestioned', body.validityQuestioned],
-    ['employmentIssues', body.employmentIssues],
-    ['preExisting', body.preExisting],
-    ['otherFactors', body.otherFactors],
-    ['sportsHobbies', body.sportsHobbies],
-    ['heavyLiftingOutsideWork', body.heavyLiftingOutsideWork],
-  ];
-
-  for (const [key, val] of req) {
-    if (!isNonEmptyString(val)) missing.push(key);
-  }
-
-  if (!witnessSet.has(body.witnessesPresent)) {
-    if (!missing.includes('witnessesPresent')) missing.push('witnessesPresent');
-  }
-
-  if (isNonEmptyString(body.reporterRole) && !REPORTER_ROLES.has(body.reporterRole.trim())) {
-    missing.push('reporterRole');
-  }
-  if (isNonEmptyString(body.howLearned) && !HOW_LEARNED.has(body.howLearned.trim())) {
-    missing.push('howLearned');
-  }
-  if (isNonEmptyString(body.projectType) && !PROJECT_TYPES.has(body.projectType.trim())) {
-    missing.push('projectType');
-  }
-  if (isNonEmptyString(body.retailer) && !RETAILERS.has(body.retailer.trim())) {
-    missing.push('retailer');
-  }
-
-  for (const k of [
-    'validityQuestioned',
-    'employmentIssues',
-    'preExisting',
-    'otherFactors',
-    'sportsHobbies',
-    'heavyLiftingOutsideWork',
-  ]) {
-    if (body[k] != null && body[k] !== '' && !ynUnknown.has(body[k])) {
-      missing.push(k);
-    }
-  }
-
-  if (body.witnessesPresent === 'Yes' && !isNonEmptyString(body.witnessDetails)) {
-    missing.push('witnessDetails');
-  }
-
-  if (body.projectType === 'Other' && !isNonEmptyString(body.projectOther)) {
-    missing.push('projectOther');
-  }
-
-  const pairs = [
-    ['validityQuestioned', 'validityExplain'],
-    ['employmentIssues', 'employmentExplain'],
-    ['preExisting', 'preExistingExplain'],
-    ['otherFactors', 'otherFactorsExplain'],
-    ['sportsHobbies', 'sportsExplain'],
-    ['heavyLiftingOutsideWork', 'heavyLiftingExplain'],
-  ];
-  for (const [radioKey, explainKey] of pairs) {
-    if (body[radioKey] === 'Yes' && !isNonEmptyString(body[explainKey])) {
-      missing.push(explainKey);
-    }
-  }
-
-  return [...new Set(missing)];
+function renderEmail(title, sections) {
+  return {
+    html: buildHtmlEmail(title, sections),
+    text: buildTextEmail(title, sections),
+  };
 }
 
-function subjectLine(body) {
-  const { associateName, retailer, storeNumber, incidentDate } = body;
-  return `Injury Claim — ${associateName} — ${retailer} #${storeNumber} — ${incidentDate}`;
+function selfSections(payload) {
+  return [
+    {
+      title: 'Your Information',
+      rows: [
+        ['Reporter name', payload.reporterName],
+        ['Reporter email', payload.reporterEmail],
+        ['Reporter phone', payload.reporterPhone],
+      ],
+    },
+    {
+      title: 'Incident Details',
+      rows: [
+        ['Retailer', payload.retailer],
+        ['Store / warehouse number', payload.storeNumber],
+        ['Store address', payload.storeAddress],
+        ['Project', payload.project],
+        ['Mechanism', payload.mechanism],
+        ['Date of injury', payload.dateOfInjury],
+        ['Time of injury', payload.timeOfInjury],
+        ['Body part(s) affected', asArray(payload.bodyPartsAffected)],
+        ['Side affected', payload.sideAffected],
+        ['Description of what happened', payload.description],
+      ],
+    },
+    {
+      title: 'Witnesses',
+      rows: [['Witnesses', asArray(payload.witnesses)]],
+    },
+    {
+      title: 'Reporting & History',
+      rows: [
+        ['Did you report it to a supervisor?', payload.reportedToSupervisor],
+        ['Supervisor name', payload.reportedToSupervisor === 'Yes' ? payload.supervisorName : '—'],
+        [
+          'Date reported to supervisor',
+          payload.reportedToSupervisor === 'Yes' ? payload.supervisorDateReported : '—',
+        ],
+        [
+          'Time reported to supervisor',
+          payload.reportedToSupervisor === 'Yes' ? payload.supervisorTimeReported : '—',
+        ],
+        ['Any pre-existing conditions or prior injuries to the affected area?', payload.preExistingAny],
+        ['Please describe', payload.preExistingAny === 'Yes' ? payload.preExistingDetails : '—'],
+      ],
+    },
+  ];
 }
+
+function witnessSections(payload) {
+  return [
+    {
+      title: 'Your Information',
+      rows: [
+        ['Reporter name', payload.reporterName],
+        ['Reporter email', payload.reporterEmail],
+        ['Reporter phone', payload.reporterPhone],
+        ['Relationship to injured person', payload.relationshipToInjured],
+      ],
+    },
+    {
+      title: 'About the Injured Person',
+      rows: [
+        ["Injured associate's name", payload.injuredAssociateName],
+        ['Retailer', payload.retailer],
+        ['Store / warehouse number', payload.storeNumber],
+        ['Store address', payload.storeAddress],
+        ['Project', payload.project],
+      ],
+    },
+    {
+      title: 'Incident Details',
+      rows: [
+        ['Mechanism', payload.mechanism],
+        ['Date of injury', payload.dateOfInjury],
+        ['Time of injury (if known)', payload.timeOfInjury],
+        ['Body part(s) affected (if known)', asArray(payload.bodyPartsAffected)],
+        ['Side affected (if known)', payload.sideAffected],
+      ],
+    },
+    {
+      title: 'What You Witnessed or Were Told',
+      rows: [
+        ['Description of what was witnessed or reported', payload.description],
+        ['Statement / additional information', payload.statementAdditionalInfo],
+      ],
+    },
+    {
+      title: 'Reporting & History',
+      rows: [
+        ['Did the injured person mention reporting it to anyone?', payload.mentionedReporting],
+        ['Name of person they mentioned reporting to', payload.mentionedReportName],
+        ['Date of that report', payload.mentionedReportDate],
+        ['Time of that report', payload.mentionedReportTime],
+        [
+          'Aware of pre-existing conditions relevant to affected body part(s)?',
+          payload.preExistingAware,
+        ],
+        ['Please describe', payload.preExistingAware === 'Yes' ? payload.preExistingDetails : '—'],
+      ],
+    },
+  ];
+}
+
+function investigationSections(payload) {
+  return [
+    {
+      title: 'Manager Information',
+      rows: [
+        ['Reporter name (manager)', payload.reporterName],
+        ['Reporter email', payload.reporterEmail],
+        ['Reporter phone', payload.reporterPhone],
+      ],
+    },
+    {
+      title: 'About the Injured Associate',
+      rows: [["Injured associate's name", payload.injuredAssociateName]],
+    },
+    {
+      title: 'Incident Anchor',
+      rows: [
+        ['Retailer', payload.retailer],
+        ['Store / warehouse number', payload.storeNumber],
+        ['Store address', payload.storeAddress],
+        ['Project', payload.project],
+        ['Mechanism', payload.mechanism],
+        ['Date of injury', payload.dateOfInjury],
+      ],
+    },
+    {
+      title: 'Investigation Questions',
+      rows: [
+        ['Q1. Date first learned about the incident', payload.firstLearnedDate],
+        ['Q1. Time first learned about the incident', payload.firstLearnedTime],
+        ['Q2. Were there any witnesses?', payload.witnessesPresent],
+        ['Witness entries', payload.witnessesPresent === 'Yes' ? asArray(payload.witnesses) : '—'],
+        ['Q3. Project associate was working on when injured', payload.projectAtInjury],
+        ['Q4. Confirm retailer', payload.confirmRetailer],
+        ['Q4. Confirm store / warehouse number', payload.confirmStoreNumber],
+        ['Q4. Confirm store address', payload.confirmStoreAddress],
+        [
+          "Q5. Inconsistencies between worker's account and what you observed or were told?",
+          payload.inconsistenciesAny,
+        ],
+        ['Q5. Describe', payload.inconsistenciesAny === 'Yes' ? payload.inconsistenciesDescribe : '—'],
+        ['Q6. Current employment or disciplinary issues?', payload.employmentDisciplinaryAny],
+        [
+          'Q6. Describe',
+          payload.employmentDisciplinaryAny === 'Yes' ? payload.employmentDisciplinaryDescribe : '—',
+        ],
+        ['Q7. Pre-existing injuries or conditions that might be relevant?', payload.preExistingRelevantAny],
+        [
+          'Q7. Describe',
+          payload.preExistingRelevantAny === 'Yes' ? payload.preExistingRelevantDescribe : '—',
+        ],
+        ['Q8. Other contributing factors?', payload.contributingFactorsAny],
+        [
+          'Q8. Describe',
+          payload.contributingFactorsAny === 'Yes' ? payload.contributingFactorsDescribe : '—',
+        ],
+        ['Q9. Sports, activities, or hobbies that could be relevant?', payload.sportsActivitiesAny],
+        ['Q9. Describe', payload.sportsActivitiesAny === 'Yes' ? payload.sportsActivitiesDescribe : '—'],
+        ['Q10. Heavy lifting or moving activities outside of work?', payload.heavyLiftingAny],
+        ['Q10. Describe', payload.heavyLiftingAny === 'Yes' ? payload.heavyLiftingDescribe : '—'],
+      ],
+    },
+    {
+      title: 'OSHA Recordability',
+      rows: [['OSHA recordability indicators', asArray(payload.oshaIndicators)]],
+    },
+    {
+      title: 'Additional Follow-ups',
+      rows: [['Additional follow-ups assigned', payload.additionalFollowUps]],
+    },
+  ];
+}
+
+function buildSelfEmail(payload) {
+  return renderEmail('Injury Self-Report', selfSections(payload));
+}
+
+function buildWitnessEmail(payload) {
+  return renderEmail('Witness/Statement Report', witnessSections(payload));
+}
+
+function buildInvestigationEmail(payload) {
+  return renderEmail('Manager Investigation', investigationSections(payload));
+}
+
+function subjectLine(reportType, payload) {
+  if (reportType === 'self') {
+    return `Injury Self-Report — ${payload.reporterName} at ${payload.retailer} #${payload.storeNumber}`;
+  }
+  if (reportType === 'witness') {
+    return `Witness/Statement Report — ${payload.injuredAssociateName} at ${payload.retailer} #${payload.storeNumber} (reported by ${payload.reporterName})`;
+  }
+  return `Manager Investigation — ${payload.injuredAssociateName} at ${payload.retailer} #${payload.storeNumber} (manager: ${payload.reporterName})`;
+}
+
+const validators = {
+  self: validateSelfClaim,
+  witness: validateWitnessReport,
+  investigation: validateInvestigationReport,
+};
+
+const emailTemplates = {
+  self: buildSelfEmail,
+  witness: buildWitnessEmail,
+  investigation: buildInvestigationEmail,
+};
 
 const app = express();
 
@@ -331,18 +611,31 @@ app.post('/api/claims', async (req, res) => {
     return res.status(500).json({ error: 'Server configuration error.' });
   }
 
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const missing = collectMissing(body);
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  let reportType = payload.reportType;
 
+  if (!isNonEmptyString(reportType)) {
+    reportType = 'self';
+    console.warn('[claims] Missing reportType; treating payload as self for backwards compatibility.');
+  }
+
+  if (!REPORT_TYPES.has(reportType)) {
+    return res.status(400).json({ error: 'Invalid reportType' });
+  }
+
+  console.log(
+    `[claims] submission reportType=${reportType} retailer=${payload.retailer || '—'} storeNumber=${payload.storeNumber || '—'}`
+  );
+
+  const missing = validators[reportType](payload);
   if (missing.length > 0) {
     return res.status(400).json({ error: 'Validation failed.', missing });
   }
 
+  const { html, text } = emailTemplates[reportType](payload);
+  const subj = subjectLine(reportType, payload);
+  const reporterEmail = payload.reporterEmail.trim();
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const html = buildOpsHtml(body);
-  const text = buildOpsText(body);
-  const subj = subjectLine(body);
-  const reporterEmail = body.reporterEmail.trim();
 
   try {
     const result = await resend.emails.send({
