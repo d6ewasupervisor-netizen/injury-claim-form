@@ -161,6 +161,22 @@ Form metadata:
 
 ---
 
+## Time picker component
+
+- All `<input type="time">` fields across self, witness, and investigation forms are progressively enhanced by `the-dump-bin/claims/time-picker.js`, loaded on every form via `<script src="/claims/time-picker.js" defer>` before `app.js`.
+- The script finds each native time input, hides it (`type="hidden"`), and renders a custom widget in its place: two numeric text inputs (`HH` and `MM`) and an AM/PM segmented toggle.
+- Affected fields: `timeOfInjury` and `supervisorTimeReported` (self), `timeOfInjury` and `mentionedReportTime` (witness), `firstLearnedTime` (investigation).
+- Behavior:
+  - Hour input accepts 1–12, auto-advances focus to minutes after two digits or on `:` keypress.
+  - Minute input accepts 0–59 typed; on blur, snaps to the nearest 15-minute increment (`:00`, `:15`, `:30`, `:45`).
+  - AM/PM toggle defaults to unset and must be explicitly chosen for the value to be considered valid.
+  - Hidden field receives standard 24-hour `HH:MM` format (e.g., `14:15`), matching the original payload contract — no backend changes required.
+  - Required validation runs on form submit; missing/invalid values block submission, focus the hour field, and add `.ro-time-invalid` for visual feedback.
+- Styling lives in the inline `<style>` block of each form HTML, scoped under `.ro-time-picker` and uses existing brand tokens for visual consistency. On screens ≤480px, the AM/PM toggle stacks below the digits and spans full width.
+- Why custom: native `<input type="time">` on Android Chrome lacks an explicit confirm action, so tapping outside the picker discards the selection — a critical defect for an injury reporting workflow.
+
+---
+
 ## Unique to each form
 
 - **Self-Report Injury:** First-person injured-worker flow. Requires time of injury, body part(s), side affected, supervisor reporting answer, and pre-existing condition answer. Supports an optional witness repeater.
