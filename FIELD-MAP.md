@@ -349,7 +349,7 @@ To add a manager:
 
 - All three forms POST to the same backend endpoint: `https://api.the-dump-bin.com/api/claims` (via Cloudflare Access; see **Shared across all three forms**).
 - The backend branches on `reportType` and renders one of three email templates: self, witness, or investigation.
-- All emails are sent to `OPS_TO`.
+- Operations recipients are configured with **`CLAIMS_OPS_TO`** on the API host (comma-separated); see `injury-claim-form` README.
 - `replyTo` is set to the submitter's `reporterEmail`.
 - `cc` is also set to the submitter's `reporterEmail`, guarded by backend email validation, so submitters receive a record of what they submitted.
 - Subjects are:

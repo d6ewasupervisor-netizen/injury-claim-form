@@ -4,8 +4,15 @@ import rateLimit from 'express-rate-limit';
 import { Resend } from 'resend';
 
 const PORT = process.env.PORT || 3000;
-const OPS_TO = 'tyson.gauthier@retailodyssey.com';
 const FROM = 'Retail Odyssey Claims <claims@retail-odyssey.com>';
+
+/** Operations inbox(es) for claim notifications; override with CLAIMS_OPS_TO (comma-separated). */
+function parseOpsRecipients() {
+  const raw = process.env.CLAIMS_OPS_TO?.trim();
+  const fallback = 'tyson.gauthier@retailodyssey.com';
+  const src = raw || fallback;
+  return src.split(',').map((s) => s.trim()).filter(Boolean);
+}
 
 const REPORT_TYPES = new Set(['self', 'witness', 'investigation']);
 const YES_NO = new Set(['Yes', 'No']);
@@ -697,12 +704,17 @@ app.post('/api/claims', async (req, res) => {
   const subj = subjectLine(reportType, payload);
   const reporterEmail = payload.reporterEmail.trim();
   const ccRecipients = isEmail(reporterEmail) ? [reporterEmail] : [];
+  const opsTo = parseOpsRecipients();
+  if (opsTo.length === 0) {
+    console.error('[claims] CLAIMS_OPS_TO resolves to no recipient addresses.');
+    return res.status(500).json({ error: 'Server configuration error.' });
+  }
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   try {
     const result = await resend.emails.send({
       from: FROM,
-      to: OPS_TO,
+      to: opsTo.length === 1 ? opsTo[0] : opsTo,
       replyTo: reporterEmail,
       // CC the submitter so they have a record of what they submitted.
       ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
@@ -716,6 +728,9 @@ app.post('/api/claims', async (req, res) => {
       return res.status(500).json({ error: 'Failed to send notification email.' });
     }
 
+    console.log(
+      `[claims] email sent id=${result.data?.id ?? '(none)'} to=${opsTo.join(',')} reportType=${reportType}`
+    );
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error(err);

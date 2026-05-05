@@ -5,7 +5,7 @@ Node.js API (`api/`) deployed on **Railway** that receives injury-report submiss
 The frontend lives in the `the-dump-bin` repo and is served from `https://the-dump-bin.com/claims/...`. This repo no longer ships any frontend code; the previously-served `claims.the-dump-bin.com` subdomain (formerly backed by a `docs/` folder via GitHub Pages) was retired during the consolidation.
 
 - **From:** `claims@retail-odyssey.com`
-- **To:** `tyson.gauthier@retailodyssey.com` (operations inbox; reporter is **CC**'d, **Reply-To** is the reporter's email)
+- **To:** Operations inbox from **`CLAIMS_OPS_TO`** on the API host (comma-separated allowed); defaults to `tyson.gauthier@retailodyssey.com`. Reporter is **CC**'d; **Reply-To** is the reporter's email.
 - **Auth:** None in-app. **Cloudflare Access (OTP)** gates the form pages on `the-dump-bin.com/claims/*`.
 
 ## Repository layout
@@ -52,6 +52,7 @@ To exercise the API end-to-end locally, run a local copy of the `the-dump-bin/cl
 3. **Start:** `npm start` (`node server.js`)
 4. **Variables:**
    - `RESEND_API_KEY`
+   - `CLAIMS_OPS_TO` — optional; comma-separated inbox(es) that receive every submission (see **To** above)
    - `ALLOWED_ORIGINS` — current production value: `https://the-dump-bin.com,https://www.the-dump-bin.com`
    - `PORT` is set by Railway automatically.
 
@@ -68,8 +69,16 @@ Authentication is **not** implemented in this app. The form pages on `the-dump-b
 | `RESEND_API_KEY` | Resend API key (secret) |
 | `PORT` | Listen port (default `3000`; Railway sets this) |
 | `ALLOWED_ORIGINS` | Comma-separated browser `Origin` values allowed for CORS |
+| `CLAIMS_OPS_TO` | Optional. Comma-separated recipient addresses for claim notifications |
 
 Do not commit `.env` (gitignored).
+
+### Troubleshooting missing notifications
+
+1. **Railway logs** — On success you should see `[claims] email sent id=…`. If you see `Resend error:` instead, fix domain/API key in [Resend](https://resend.com).
+2. **`CLAIMS_OPS_TO`** — Confirm this matches the mailbox you monitor (note `retailodyssey.com` vs `retail-odyssey.com` if your org uses both).
+3. **Spam / quarantine** — Messages arrive From `claims@retail-odyssey.com`; allowlist that sender if needed.
+4. **Submitter copy** — Valid reporter emails are **CC**'d; ask a test submitter to check their inbox if ops inbox receives nothing.
 
 ## Security
 
