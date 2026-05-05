@@ -5,7 +5,7 @@ Node.js API (`api/`) deployed on **Railway** that receives injury-report submiss
 The frontend lives in the `the-dump-bin` repo and is served from `https://the-dump-bin.com/claims/...`. This repo no longer ships any frontend code; the previously-served `claims.the-dump-bin.com` subdomain (formerly backed by a `docs/` folder via GitHub Pages) was retired during the consolidation.
 
 - **From:** `claims@retail-odyssey.com`
-- **To:** Operations inbox from **`CLAIMS_OPS_TO`** on the API host (comma-separated allowed); defaults to `tyson.gauthier@retailodyssey.com`. Reporter is **CC**'d; **Reply-To** is the reporter's email.
+- **To:** Operations inbox from **`CLAIMS_OPS_TO`** on the API host (comma-separated allowed); defaults to `d6ewa.supervisor@gmail.com` until corp routing is restored. Reporter is **CC**'d; **Reply-To** is the reporter's email.
 - **Auth:** None in-app. **Cloudflare Access (OTP)** gates the form pages on `the-dump-bin.com/claims/*`.
 
 ## Repository layout

@@ -9,7 +9,8 @@ const FROM = 'Retail Odyssey Claims <claims@retail-odyssey.com>';
 /** Operations inbox(es) for claim notifications; override with CLAIMS_OPS_TO (comma-separated). */
 function parseOpsRecipients() {
   const raw = process.env.CLAIMS_OPS_TO?.trim();
-  const fallback = 'tyson.gauthier@retailodyssey.com';
+  // Temporary: corp inbox delivery unreliable; override via CLAIMS_OPS_TO when ready (e.g. work + Gmail).
+  const fallback = 'd6ewa.supervisor@gmail.com';
   const src = raw || fallback;
   return src.split(',').map((s) => s.trim()).filter(Boolean);
 }
