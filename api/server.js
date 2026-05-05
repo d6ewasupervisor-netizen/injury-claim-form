@@ -620,8 +620,13 @@ const emailTemplates = {
 };
 
 const app = express();
-// Railway terminates TLS at the edge and forwards X-Forwarded-For; express-rate-limit requires this.
-app.set('trust proxy', true);
+// Proxies (Railway edge, optional CDN) set X-Forwarded-For. Use a numeric hop count — not `true` —
+// or express-rate-limit logs ERR_ERL_PERMISSIVE_TRUST_PROXY. Increase TRUST_PROXY_HOPS if req.ip
+// does not match the real client (e.g. try 2 behind Cloudflare + Railway).
+{
+  const hops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '', 10);
+  app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : 1);
+}
 
 const allowedList = parseAllowedOrigins();
 const corsOptions =

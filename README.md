@@ -70,6 +70,7 @@ Authentication is **not** implemented in this app. The form pages on `the-dump-b
 | `PORT` | Listen port (default `3000`; Railway sets this) |
 | `ALLOWED_ORIGINS` | Comma-separated browser `Origin` values allowed for CORS |
 | `CLAIMS_OPS_TO` | Optional. Comma-separated recipient addresses for claim notifications |
+| `TRUST_PROXY_HOPS` | Optional. Number of reverse proxies in front of the app (default `1`). Use `2` if the client IP is wrong behind Cloudflare + Railway. |
 
 Do not commit `.env` (gitignored).
 
@@ -79,6 +80,11 @@ Do not commit `.env` (gitignored).
 2. **`CLAIMS_OPS_TO`** — Confirm this matches the mailbox you monitor (note `retailodyssey.com` vs `retail-odyssey.com` if your org uses both).
 3. **Spam / quarantine** — Messages arrive From `claims@retail-odyssey.com`; allowlist that sender if needed.
 4. **Submitter copy** — Valid reporter emails are **CC**'d; ask a test submitter to check their inbox if ops inbox receives nothing.
+5. **Resend activity** — In [Resend](https://resend.com/emails), open the email by **Log ID** (matches `[claims] email sent id=…` in Railway). If status is bounced or suppressed, fix the recipient address or domain blocking.
+
+### Behind Cloudflare or multiple proxies
+
+If rate limits behave oddly or the inferred client IP is wrong, set **`TRUST_PROXY_HOPS`** on Railway (try `2`). Confirm using the test-endpoint approach in the [express-rate-limit proxy guide](https://express-rate-limit.mintlify.app/guides/troubleshooting-proxy-issues).
 
 ## Security
 
