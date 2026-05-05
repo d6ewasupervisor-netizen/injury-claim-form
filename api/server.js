@@ -620,6 +620,8 @@ const emailTemplates = {
 };
 
 const app = express();
+// Railway terminates TLS at the edge and forwards X-Forwarded-For; express-rate-limit requires this.
+app.set('trust proxy', true);
 
 const allowedList = parseAllowedOrigins();
 const corsOptions =
